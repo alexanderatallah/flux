@@ -64,7 +64,8 @@ import { NavigationBar } from "./utils/NavigationBar";
 import { CheckCircleIcon } from "@chakra-ui/icons";
 import { Box, useDisclosure, Spinner, useToast } from "@chakra-ui/react";
 import mixpanel from "mixpanel-browser";
-import { CreateCompletionResponseChoicesInner, OpenAI } from "openai-streams";
+import { Output, getWindowAI } from "window.ai"
+import { CreateCompletionResponseChoicesInner } from "openai-streams";
 import { Resizable } from "re-resizable";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useBeforeunload } from "react-beforeunload";
@@ -85,6 +86,7 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { yieldStream } from "yield-stream";
+import { MessageOutput } from "window.ai";
 
 function App() {
   const toast = useToast();
@@ -361,39 +363,21 @@ function App() {
     if (firstCompletionId === undefined) throw new Error("No first completion id!");
 
     (async () => {
-      const stream = await OpenAI(
-        "chat",
+      const windowAI = await getWindowAI()
+      const stream = await windowAI.getCompletion(
+        { messages: messagesFromLineage(parentNodeLineage, settings) },
         {
           model,
-          n: responses,
+          numOutputs: responses,
           temperature: temp,
-          messages: messagesFromLineage(parentNodeLineage, settings),
-        },
-        { apiKey: apiKey!, mode: "raw" }
+          onStreamResult
+        }
       );
 
-      const DECODER = new TextDecoder();
+    
+      function onStreamResult(result: Output | null, error: string | null) {
 
-      const abortController = new AbortController();
-
-      for await (const chunk of yieldStream(stream, abortController)) {
-        if (abortController.signal.aborted) break;
-
-        try {
-          const decoded = JSON.parse(DECODER.decode(chunk));
-
-          if (decoded.choices === undefined)
-            throw new Error(
-              "No choices in response. Decoded response: " + JSON.stringify(decoded)
-            );
-
-          const choice: CreateChatCompletionStreamResponseChoicesInner =
-            decoded.choices[0];
-
-          if (choice.index === undefined)
-            throw new Error(
-              "No index in choice. Decoded choice: " + JSON.stringify(choice)
-            );
+        const choice = result as MessageOutput
 
           const correspondingNodeId =
             // If we re-used a node we have to pull it from children array.
@@ -403,7 +387,7 @@ function App() {
 
           // The ChatGPT API will start by returning a
           // choice with only a role delta and no content.
-          if (choice.delta?.content) {
+          if (choice.message?.content) {
             setNodes((newerNodes) => {
               try {
                 return appendTextToFluxNodeAsGPT(newerNodes, {

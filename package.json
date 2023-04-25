@@ -26,6 +26,7 @@
     "react-textarea-autosize": "^8.4.0",
     "reactflow": "^11.7.0",
     "rehype-highlight": "^6.0.0",
+    "window.ai": "^0.1.1",
     "yield-stream": "^2.3.0"
   },
   "devDependencies": {
